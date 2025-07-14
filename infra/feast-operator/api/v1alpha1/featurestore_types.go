@@ -78,10 +78,16 @@ type FeatureStoreSpec struct {
 }
 
 // FeastProjectDir defines how to create the feast project directory.
-// +kubebuilder:validation:XValidation:rule="[has(self.git), has(self.init)].exists_one(c, c)",message="One selection required between init or git."
+// +kubebuilder:validation:XValidation:rule="[has(self.git), has(self.init), has(self.packaged)].exists_one(c, c)",message="One selection required between init, git or packaged."
 type FeastProjectDir struct {
-	Git  *GitCloneOptions  `json:"git,omitempty"`
-	Init *FeastInitOptions `json:"init,omitempty"`
+	Git      *GitCloneOptions      `json:"git,omitempty"`
+	Init     *FeastInitOptions     `json:"init,omitempty"`
+	Packaged *FeastPackagedOptions `json:"packaged,omitempty"`
+}
+
+// FeastPackagedOptions describes how to create the feast project directory from a pre-built feast project.
+type FeastPackagedOptions struct {
+	Path string `json:"path"`
 }
 
 // GitCloneOptions describes how a clone should be performed.
