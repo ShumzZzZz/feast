@@ -715,10 +715,20 @@ spec:
                         - clickhouse
                         type: string
                     type: object
+                  packaged:
+                    description: FeastPackagedOptions describes how to create the
+                      feast project directory from a pre-built feast project.
+                    properties:
+                      path:
+                        type: string
+                    required:
+                    - path
+                    type: object
                 type: object
                 x-kubernetes-validations:
-                - message: One selection required between init or git.
-                  rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                - message: One selection required between init, git or packaged.
+                  rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                    c)'
               replicas:
                 default: 1
                 description: |-
@@ -5556,10 +5566,20 @@ spec:
                             - clickhouse
                             type: string
                         type: object
+                      packaged:
+                        description: FeastPackagedOptions describes how to create
+                          the feast project directory from a pre-built feast project.
+                        properties:
+                          path:
+                            type: string
+                        required:
+                        - path
+                        type: object
                     type: object
                     x-kubernetes-validations:
-                    - message: One selection required between init or git.
-                      rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                    - message: One selection required between init, git or packaged.
+                      rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                        c)'
                   replicas:
                     default: 1
                     description: |-
