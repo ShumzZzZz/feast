@@ -138,6 +138,20 @@ _Appears in:_
 | `template` _string_ | Template for the created project |
 
 
+#### FeastPackagedOptions
+
+
+
+FeastPackagedOptions describes how to create the feast project directory from a pre-built feast project.
+
+_Appears in:_
+- [FeastProjectDir](#feastprojectdir)
+
+| Field | Description |
+| --- | --- |
+| `path` _string_ |  |
+
+
 #### FeastProjectDir
 
 
@@ -151,6 +165,7 @@ _Appears in:_
 | --- | --- |
 | `git` _[GitCloneOptions](#gitcloneoptions)_ |  |
 | `init` _[FeastInitOptions](#feastinitoptions)_ |  |
+| `packaged` _[FeastPackagedOptions](#feastpackagedoptions)_ |  |
 
 
 #### FeatureStore

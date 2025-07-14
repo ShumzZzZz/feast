@@ -647,6 +647,10 @@ func (feast *FeastServices) setInitContainer(podSpec *corev1.PodSpec, fsYamlB64 
 			if feastProjectDir.Git.EnvFrom != nil {
 				container.EnvFrom = *feastProjectDir.Git.EnvFrom
 			}
+		} else if feastProjectDir.Packaged != nil {
+			packagedSrc := feastProjectDir.Packaged.Path
+			PackagedSlice := []string{"cp", "-r", packagedSrc, projectPath}
+			createCommand = strings.Join(PackagedSlice, " ")
 		}
 
 		featureRepoDir := feast.getFeatureRepoDir()
