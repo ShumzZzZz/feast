@@ -29,7 +29,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # feast.dev/feast-operator-bundle:$VERSION and feast.dev/feast-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= quay.io/feastdev/feast-operator
+# IMAGE_TAG_BASE ?= quay.io/feastdev/feast-operator
+IMAGE_TAG_BASE ?= docker.io/shuminzheng/feast-operator-custom
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
@@ -51,7 +52,8 @@ endif
 OPERATOR_SDK_VERSION ?= v1.38.0
 # Image URL to use all building/pushing image targets
 IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
-FS_IMG ?= quay.io/feastdev/feature-server:$(VERSION)
+# FS_IMG ?= quay.io/feastdev/feature-server:$(VERSION)
+FS_IMG ?= docker.io/shuminzheng/feature-server-custom:$(VERSION)
 CJ_IMG ?= quay.io/openshift/origin-cli:4.17
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.30.0
