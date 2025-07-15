@@ -18829,7 +18829,7 @@ spec:
           value: quay.io/feastdev/feature-server:0.60.0
         - name: RELATED_IMAGE_CRON_JOB
           value: quay.io/openshift/origin-cli:4.17
-        image: quay.io/feastdev/feast-operator:0.60.0
+        image: docker.io/shuminzheng/feast-operator:0.60.0
         livenessProbe:
           httpGet:
             path: /healthz
