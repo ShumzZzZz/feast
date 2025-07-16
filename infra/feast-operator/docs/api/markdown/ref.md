@@ -186,7 +186,7 @@ _Appears in:_
 
 | Field | Description |
 | --- | --- |
-| `path` _string_ |  |
+| `featureRepoPath` _string_ |  |
 
 
 #### FeastProjectDir

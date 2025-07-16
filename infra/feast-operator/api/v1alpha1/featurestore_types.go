@@ -87,7 +87,7 @@ type FeastProjectDir struct {
 
 // FeastPackagedOptions describes how to create the feast project directory from a pre-built feast project.
 type FeastPackagedOptions struct {
-	Path string `json:"path"`
+	FeatureRepoPath string `json:"featureRepoPath"`
 }
 
 // GitCloneOptions describes how a clone should be performed.
