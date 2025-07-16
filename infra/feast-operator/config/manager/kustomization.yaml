@@ -4,5 +4,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: docker.io/shuminzheng/feast-operator-custom
+  newName: docker.io/shuminzheng/feast-operator
   newTag: 0.50.0
