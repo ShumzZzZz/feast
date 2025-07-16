@@ -648,8 +648,8 @@ func (feast *FeastServices) setInitContainer(podSpec *corev1.PodSpec, fsYamlB64 
 				container.EnvFrom = *feastProjectDir.Git.EnvFrom
 			}
 		} else if feastProjectDir.Packaged != nil {
-			packagedSrc := feastProjectDir.Packaged.Path
-			PackagedSlice := []string{"cp", "-r", packagedSrc, projectPath}
+			packagedSrc := feastProjectDir.Packaged.FeatureRepoPath
+			PackagedSlice := []string{"echo", "the feature repo is " + packagedSrc}
 			createCommand = strings.Join(PackagedSlice, " ")
 		}
 
@@ -1085,6 +1085,9 @@ func (feast *FeastServices) getFeatureRepoDir() string {
 	feastProjectDir := getOfflineMountPath(feast.Handler.FeatureStore) + "/" + applied.FeastProject
 	if applied.FeastProjectDir != nil && applied.FeastProjectDir.Git != nil && len(applied.FeastProjectDir.Git.FeatureRepoPath) > 0 {
 		return feastProjectDir + "/" + applied.FeastProjectDir.Git.FeatureRepoPath
+	}
+	if applied.FeastProjectDir != nil && applied.FeastProjectDir.Packaged != nil {
+		return applied.FeastProjectDir.Packaged.FeatureRepoPath
 	}
 	return feastProjectDir + "/" + FeatureRepoDir
 }

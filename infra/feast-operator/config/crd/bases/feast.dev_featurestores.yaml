@@ -675,10 +675,10 @@ spec:
                     description: FeastPackagedOptions describes how to create the
                       feast project directory from a pre-built feast project.
                     properties:
-                      path:
+                      featureRepoPath:
                         type: string
                     required:
-                    - path
+                    - featureRepoPath
                     type: object
                 type: object
                 x-kubernetes-validations:
@@ -4647,10 +4647,10 @@ spec:
                         description: FeastPackagedOptions describes how to create
                           the feast project directory from a pre-built feast project.
                         properties:
-                          path:
+                          featureRepoPath:
                             type: string
                         required:
-                        - path
+                        - featureRepoPath
                         type: object
                     type: object
                     x-kubernetes-validations:
