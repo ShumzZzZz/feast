@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: featurestores.feast.dev
 spec:
   group: feast.dev
@@ -9823,10 +9823,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -10565,10 +10562,20 @@ spec:
                         - clickhouse
                         type: string
                     type: object
+                  packaged:
+                    description: FeastPackagedOptions describes how to create the
+                      feast project directory from a pre-built feast project.
+                    properties:
+                      featureRepoPath:
+                        type: string
+                    required:
+                    - featureRepoPath
+                    type: object
                 type: object
                 x-kubernetes-validations:
-                - message: One selection required between init or git.
-                  rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                - message: One selection required between init, git or packaged.
+                  rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                    c)'
               services:
                 description: FeatureStoreServices defines the desired feast services.
                   An ephemeral onlineStore feature server is deployed by default.
@@ -14774,10 +14781,20 @@ spec:
                             - clickhouse
                             type: string
                         type: object
+                      packaged:
+                        description: FeastPackagedOptions describes how to create
+                          the feast project directory from a pre-built feast project.
+                        properties:
+                          featureRepoPath:
+                            type: string
+                        required:
+                        - featureRepoPath
+                        type: object
                     type: object
                     x-kubernetes-validations:
-                    - message: One selection required between init or git.
-                      rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                    - message: One selection required between init, git or packaged.
+                      rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                        c)'
                   services:
                     description: FeatureStoreServices defines the desired feast services.
                       An ephemeral onlineStore feature server is deployed by default.
@@ -18414,10 +18431,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
