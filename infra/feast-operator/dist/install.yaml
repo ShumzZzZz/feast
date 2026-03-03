@@ -18840,7 +18840,7 @@ spec:
         - /manager
         env:
         - name: RELATED_IMAGE_FEATURE_SERVER
-          value: docker.io/shuminzheng/feature-server-custom:0.60.0
+          value: quay.io/feastdev/feature-server:0.60.0
         - name: RELATED_IMAGE_CRON_JOB
           value: quay.io/openshift/origin-cli:4.17
         image: docker.io/shuminzheng/feast-operator-custom:0.60.0
