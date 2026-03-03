@@ -54,8 +54,7 @@ OPERATOR_SDK_VERSION ?= v1.38.0
 # During development and testing, and before make deploy we need to export FS_IMG to point to
 # the dev image generated using command `make build-feature-server-dev-docker`
 IMG ?= $(IMAGE_TAG_BASE):$(VERSION)
-# FS_IMG ?= quay.io/feastdev/feature-server:$(VERSION)
-FS_IMG ?= docker.io/shuminzheng/feature-server-custom:$(VERSION)
+FS_IMG ?= quay.io/feastdev/feature-server:$(VERSION)
 CJ_IMG ?= quay.io/openshift/origin-cli:4.17
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.30.0
