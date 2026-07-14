@@ -1,0 +1,289 @@
+diff --git a/ui/src/components/CommandPalette.tsx b/ui/src/components/CommandPalette.tsx
+index 8e1889840..50f8f9785 100644
+--- a/ui/src/components/CommandPalette.tsx
++++ b/ui/src/components/CommandPalette.tsx
+@@ -90,6 +90,16 @@ const getItemType = (item: any, category: string): string | undefined => {
+   return undefined;
+ };
+ 
++const getFeatureViewName = (
++  item: any,
++  category: string,
++): string | undefined => {
++  if (category !== "Features") {
++    return undefined;
++  }
++  return "featureView" in item ? String(item.featureView) : undefined;
++};
++
+ const CommandPalette: React.FC<CommandPaletteProps> = ({
+   isOpen,
+   onClose,
+@@ -150,6 +160,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
+             : "",
+         type: getItemType(item, name),
+         projectId: "projectId" in item ? String(item.projectId) : undefined,
++        featureViewName: getFeatureViewName(item, name),
+       };
+     });
+ 
+@@ -252,6 +263,17 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
+                                     Project: {item.projectId}
+                                   </div>
+                                 )}
++                                {item.featureViewName && (
++                                  <div
++                                    style={{
++                                      fontSize: "0.85em",
++                                      color: "#69707D",
++                                      marginTop: "4px",
++                                    }}
++                                  >
++                                    Feature View: {item.featureViewName}
++                                  </div>
++                                )}
+                               </EuiFlexItem>
+                               {item.type && (
+                                 <EuiFlexItem grow={false}>
+diff --git a/ui/src/components/RegistrySearch.tsx b/ui/src/components/RegistrySearch.tsx
+index 46d729667..790f02ded 100644
+--- a/ui/src/components/RegistrySearch.tsx
++++ b/ui/src/components/RegistrySearch.tsx
+@@ -63,6 +63,16 @@ const getItemType = (item: any, category: string): string | undefined => {
+   return undefined;
+ };
+ 
++const getFeatureViewName = (
++  item: any,
++  category: string,
++): string | undefined => {
++  if (category !== "Features") {
++    return undefined;
++  }
++  return "featureView" in item ? String(item.featureView) : undefined;
++};
++
+ const RegistrySearch = forwardRef<RegistrySearchRef, RegistrySearchProps>(
+   ({ categories }, ref) => {
+     const [searchText, setSearchText] = useState("");
+@@ -113,6 +123,7 @@ const RegistrySearch = forwardRef<RegistrySearchRef, RegistrySearchProps>(
+               : "",
+           type: getItemType(item, name),
+           projectId: "projectId" in item ? String(item.projectId) : undefined,
++          featureViewName: getFeatureViewName(item, name),
+         };
+       });
+ 
+@@ -199,6 +210,17 @@ const RegistrySearch = forwardRef<RegistrySearchRef, RegistrySearchProps>(
+                                   Project: {item.projectId}
+                                 </div>
+                               )}
++                              {item.featureViewName && (
++                                <div
++                                  style={{
++                                    fontSize: "0.85em",
++                                    color: "#69707D",
++                                    marginTop: "4px",
++                                  }}
++                                >
++                                  Feature View: {item.featureViewName}
++                                </div>
++                              )}
+                             </EuiFlexItem>
+                             {item.type && (
+                               <EuiFlexItem grow={false}>
+diff --git a/ui/src/custom-tabs/reguar-fv-demo-tab/DemoCustomTab.tsx b/ui/src/custom-tabs/reguar-fv-demo-tab/DemoCustomTab.tsx
+index 2778acee1..ce0892741 100644
+--- a/ui/src/custom-tabs/reguar-fv-demo-tab/DemoCustomTab.tsx
++++ b/ui/src/custom-tabs/reguar-fv-demo-tab/DemoCustomTab.tsx
+@@ -1,4 +1,5 @@
+ import React from "react";
++import { useParams } from "react-router-dom";
+ 
+ import {
+   // Feature View Custom Tabs will get these props
+@@ -12,16 +13,22 @@ import {
+   EuiFlexItem,
+   EuiCode,
+   EuiSpacer,
++  EuiPanel,
++  EuiText,
++  EuiLink,
+ } from "@elastic/eui";
+ 
+ // Separating out the query is not required,
+ // but encouraged for code readability
+ import useDemoQuery from "./useDemoQuery";
++import EuiCustomLink from "../../components/EuiCustomLink";
+ 
+ const DemoCustomTab = ({
+   id,
+   feastObjectQuery,
+ }: RegularFeatureViewCustomTabProps) => {
++  const { projectName } = useParams();
++
+   // Use React Query to fetch data
+   // that is custom to this tab.
+   // See: https://react-query.tanstack.com/guides/queries
+@@ -53,11 +60,51 @@ const DemoCustomTab = ({
+     );
+   }
+ 
++  const featureViewData = feastObjectQuery.data as any;
++  const batchSource = featureViewData?.object?.spec?.batchSource;
++  const batchSourceClassType = batchSource?.dataSourceClassType || "";
++  const isSparkBatchSource = batchSourceClassType
++    .toLowerCase()
++    .includes("spark");
++  const featureViewName = id || "";
++  const githubFileUrl = `https://github.com/sayweee/ml-data-platform/tree/main/pipelines/jobs/queries/${featureViewName}.py`;
++  const batchSourcePath = batchSource?.path || batchSource?.fileOptions?.uri;
++  const batchSourceTimestampField =
++    batchSource?.timestampField || batchSource?.timestamp_field;
++  const batchSourceName = batchSource?.name;
++
+   // Feast UI uses the Elastic UI component system.
+   // <EuiFlexGroup> and <EuiFlexItem> are particularly
+   // useful for layouts.
+   return (
+     <React.Fragment>
++      <EuiPanel hasBorder={true} paddingSize="m">
++        <EuiText size="s">
++          <p>
++            GitHub lookup for feature view:&nbsp;
++            <EuiLink href={githubFileUrl} target="_blank" external>
++              {id || "(unknown feature view)"}
++            </EuiLink>
++          </p>
++          {isSparkBatchSource && (
++            <>
++              <p>batch source path: {batchSourcePath || "(not set)"}</p>
++              <p>
++                batch source timestamp_field: {batchSourceTimestampField || "(not set)"}
++              </p>
++              {projectName && batchSourceName && (
++                <p>
++                  batch source link: {" "}
++                  <EuiCustomLink to={`/p/${projectName}/data-source/${batchSourceName}`}>
++                    {batchSourceName}
++                  </EuiCustomLink>
++                </p>
++              )}
++            </>
++          )}
++        </EuiText>
++      </EuiPanel>
++      <EuiSpacer />
+       <EuiFlexGroup>
+         <EuiFlexItem grow={1}>
+           <p>Hello World. The following is fetched data.</p>
+diff --git a/ui/src/pages/feature-views/CurlGeneratorTab.tsx b/ui/src/pages/feature-views/CurlGeneratorTab.tsx
+index 147921458..904395259 100644
+--- a/ui/src/pages/feature-views/CurlGeneratorTab.tsx
++++ b/ui/src/pages/feature-views/CurlGeneratorTab.tsx
+@@ -12,17 +12,35 @@ import {
+   EuiFieldText,
+   EuiCopy,
+   EuiCheckbox,
++  EuiButtonEmpty,
+ } from "@elastic/eui";
+ import { CodeBlock, github } from "react-code-blocks";
+ import { RegularFeatureViewCustomTabProps } from "../../custom-tabs/types";
+ 
++const DEFAULT_FEATURE_SERVER_URL =
++  "https://ml-api-external.sayaweee.net/fs-write";
++const FEATURE_SERVER_URL_STORAGE_KEY = "feast-feature-server-url";
++
++const buildOnlineFeaturesUrl = (rawUrl: string): string => {
++  const trimmedUrl = rawUrl.trim().replace(/\/+$/, "");
++  if (!trimmedUrl) {
++    return "/get-online-features";
++  }
++
++  if (trimmedUrl.includes("/get-online-features")) {
++    return trimmedUrl;
++  }
++
++  return `${trimmedUrl}/get-online-features`;
++};
++
+ const CurlGeneratorTab = ({
+   feastObjectQuery,
+ }: RegularFeatureViewCustomTabProps) => {
+   const data = feastObjectQuery.data as any;
+   const [serverUrl, setServerUrl] = useState(() => {
+-    const savedUrl = localStorage.getItem("feast-feature-server-url");
+-    return savedUrl || "http://localhost:6566";
++    const savedUrl = localStorage.getItem(FEATURE_SERVER_URL_STORAGE_KEY);
++    return savedUrl || DEFAULT_FEATURE_SERVER_URL;
+   });
+   const [entityValues, setEntityValues] = useState<Record<string, string>>({});
+   const [selectedFeatures, setSelectedFeatures] = useState<
+@@ -30,7 +48,7 @@ const CurlGeneratorTab = ({
+   >({});
+ 
+   useEffect(() => {
+-    localStorage.setItem("feast-feature-server-url", serverUrl);
++    localStorage.setItem(FEATURE_SERVER_URL_STORAGE_KEY, serverUrl);
+   }, [serverUrl]);
+ 
+   if (feastObjectQuery.isLoading) {
+@@ -52,13 +70,14 @@ const CurlGeneratorTab = ({
+   const generateEntityObject = () => {
+     if (!data?.object?.spec?.entities) return {};
+ 
+-    const entities: Record<string, number[]> = {};
++    const entities: Record<string, (string | number)[]> = {};
+     data.object.spec.entities.forEach((entityName: string) => {
+       const userValue = entityValues[entityName];
+       if (userValue) {
+         const values = userValue.split(",").map((v) => {
+-          const num = parseInt(v.trim());
+-          return isNaN(num) ? 1001 : num;
++          const trimmedValue = v.trim();
++          const num = parseInt(trimmedValue);
++          return isNaN(num) ? trimmedValue : num;
+         });
+         entities[entityName] = values;
+       } else {
+@@ -77,8 +96,10 @@ const CurlGeneratorTab = ({
+       entities,
+     };
+ 
++    const endpointUrl = buildOnlineFeaturesUrl(serverUrl);
++
+     const curlCommand = `curl -X POST \\
+-  "${serverUrl}/get-online-features" \\
++  "${endpointUrl}" \\
+   -H "Content-Type: application/json" \\
+   -d '${JSON.stringify(payload, null, 2)}'`;
+ 
+@@ -104,11 +125,23 @@ const CurlGeneratorTab = ({
+         <EuiSpacer size="m" />
+ 
+         <EuiFormRow label="Feature Server URL">
+-          <EuiFieldText
+-            value={serverUrl}
+-            onChange={(e) => setServerUrl(e.target.value)}
+-            placeholder="http://localhost:6566"
+-          />
++          <EuiFlexGroup gutterSize="s" alignItems="center">
++            <EuiFlexItem>
++              <EuiFieldText
++                value={serverUrl}
++                onChange={(e) => setServerUrl(e.target.value)}
++                placeholder="http://localhost:6566"
++              />
++            </EuiFlexItem>
++            <EuiFlexItem grow={false}>
++              <EuiButtonEmpty
++                size="s"
++                onClick={() => setServerUrl(DEFAULT_FEATURE_SERVER_URL)}
++              >
++                Reset
++              </EuiButtonEmpty>
++            </EuiFlexItem>
++          </EuiFlexGroup>
+         </EuiFormRow>
+ 
+         <EuiSpacer size="m" />

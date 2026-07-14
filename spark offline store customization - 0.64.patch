@@ -1,0 +1,464 @@
+diff --git a/sdk/python/feast/feature_store.py b/sdk/python/feast/feature_store.py
+index 3dcd4189d..dc8c22010 100644
+--- a/sdk/python/feast/feature_store.py
++++ b/sdk/python/feast/feature_store.py
+@@ -1683,6 +1683,7 @@ class FeatureStore:
+         full_feature_names: bool = False,
+         start_date: Optional[datetime] = None,
+         end_date: Optional[datetime] = None,
++        event_timestamp_col: Optional[str] = None,
+     ) -> RetrievalJob:
+         """Enrich an entity dataframe with historical feature values for either training or batch scoring.
+ 
+@@ -1820,6 +1821,8 @@ class FeatureStore:
+             kwargs["start_date"] = start_date
+         if end_date is not None:
+             kwargs["end_date"] = end_date
++        if event_timestamp_col is not None:
++            kwargs["event_timestamp_col"] = event_timestamp_col
+ 
+         _retrieval_start = time.monotonic()
+ 
+diff --git a/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark.py b/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark.py
+index 8c7e657b2..decb64094 100644
+--- a/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark.py
++++ b/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark.py
+@@ -32,7 +32,7 @@ import pyarrow.parquet as pq
+ import pyspark
+ from pydantic import StrictStr
+ from pyspark import SparkConf
+-from pyspark.sql import SparkSession
++from pyspark.sql import SparkSession, functions as F
+ 
+ from feast import FeatureView, OnDemandFeatureView
+ from feast.batch_feature_view import BatchFeatureView
+@@ -172,13 +172,14 @@ class SparkOfflineStore(OfflineStore):
+         registry: BaseRegistry,
+         project: str,
+         full_feature_names: bool = False,
++        event_timestamp_col: Optional[str] = None,
+         **kwargs,
+     ) -> RetrievalJob:
+         assert isinstance(config.offline_store, SparkOfflineStoreConfig)
+-        date_partition_column_formats = []
++        date_partition_column_formats_by_name: Dict[str, Optional[str]] = {}
+         for fv in feature_views:
+             assert isinstance(fv.batch_source, SparkSource)
+-            date_partition_column_formats.append(
++            date_partition_column_formats_by_name[fv.projection.name_to_use()] = (
+                 fv.batch_source.date_partition_column_format
+             )
+ 
+@@ -224,7 +225,7 @@ class SparkOfflineStore(OfflineStore):
+                 fv_query_contexts=fv_query_contexts,
+                 start_date=start_date,
+                 end_date=end_date,
+-                date_partition_column_formats=date_partition_column_formats,
++                date_partition_column_formats_by_name=date_partition_column_formats_by_name,
+             )
+ 
+             # Add a stable as-of timestamp column for PIT joins.
+@@ -239,9 +240,10 @@ class SparkOfflineStore(OfflineStore):
+                 spark_session=spark_session,
+                 entity_df=entity_df,
+             )
+-            event_timestamp_col = offline_utils.infer_event_timestamp_from_entity_df(
+-                entity_schema=entity_schema,
+-            )
++            if event_timestamp_col is None:
++                event_timestamp_col = offline_utils.infer_event_timestamp_from_entity_df(
++                    entity_schema=entity_schema,
++                )
+             entity_df_event_timestamp_range = _get_entity_df_event_timestamp_range(
+                 entity_df,
+                 event_timestamp_col,
+@@ -278,22 +280,32 @@ class SparkOfflineStore(OfflineStore):
+             spark_session, feature_views, query_context
+         )
+ 
+-        spark_query_context = [
+-            SparkFeatureViewQueryContext(
+-                **asdict(context),
+-                min_date_partition=datetime.fromisoformat(
+-                    context.min_event_timestamp
+-                ).strftime(date_format)
+-                if context.min_event_timestamp is not None
+-                else None,
+-                max_date_partition=datetime.fromisoformat(
+-                    context.max_event_timestamp
+-                ).strftime(date_format),
++        spark_query_context = []
++        for context in query_context:
++            date_format = date_partition_column_formats_by_name.get(context.name)
++            if not date_format:
++                date_format = "%Y-%m-%d"
++            context_dict = asdict(context)
++            context_dict["max_event_timestamp"] = _format_datetime(
++                datetime.fromisoformat(context.max_event_timestamp)
+             )
+-            for date_format, context in zip(
+-                date_partition_column_formats, query_context
++            if context.min_event_timestamp is not None:
++                context_dict["min_event_timestamp"] = _format_datetime(
++                    datetime.fromisoformat(context.min_event_timestamp)
++                )
++            spark_query_context.append(
++                SparkFeatureViewQueryContext(
++                    **context_dict,
++                    min_date_partition=datetime.fromisoformat(
++                        context.min_event_timestamp
++                    ).strftime(date_format)
++                    if context.min_event_timestamp is not None
++                    else None,
++                    max_date_partition=datetime.fromisoformat(
++                        context.max_event_timestamp
++                    ).strftime(date_format),
++                )
+             )
+-        ]
+ 
+         query = offline_utils.build_point_in_time_query(
+             feature_view_query_contexts=cast(
+@@ -1097,26 +1109,53 @@ class SparkRetrievalJob(RetrievalJob):
+             else:
+                 return True
+ 
+-    def supports_remote_storage_export(self) -> bool:
++    def supports_remote_storage_export(self, destination: Optional[str] = None) -> bool:
++        """Check if remote storage export is supported for the given destination or staging_location"""
++        if destination:
++            return destination.startswith(("s3://", "gs://", "file://", "/", "wasbs://", "abfs://", "abfss://", "hdfs://")) or (
++                destination.startswith("https://") and ".blob.core.windows.net" in destination
++            )
+         return self._config.offline_store.staging_location is not None
+ 
+-    def to_remote_storage(self) -> List[str]:
+-        """Currently only works for local and s3-based staging locations"""
+-        if not self.supports_remote_storage_export():
+-            raise NotImplementedError()
++    def to_remote_storage(self, destination: Optional[str] = None) -> List[str]:
++        """
++        Export retrieval results to remote storage.
++
++        Args:
++            destination: Optional custom destination path. If not provided, uses staging_location from config.
++                       Supports s3://, gs://, file://, local paths, azure blob storage, and hdfs:// schemes.
++
++        Returns:
++            List of file paths in the destination.
++
++        Raises:
++            NotImplementedError: If the destination scheme is not supported.
++            ValueError: If no destination is provided and staging_location is not configured.
++        """
++        # Determine the actual destination to use
++        if destination:
++            if not self._is_valid_destination(destination):
++                raise ValueError(f"Unsupported destination scheme: {destination}")
++            actual_destination = destination
++        else:
++            if not self.supports_remote_storage_export():
++                raise ValueError(
++                    "No destination provided and staging_location not configured. "
++                    "Either provide a destination or configure staging_location."
++                )
++            actual_destination = self._config.offline_store.staging_location
+ 
+         sdf: pyspark.sql.DataFrame = self.to_spark_df()
+-        staging_location = self._config.offline_store.staging_location
+ 
+-        if staging_location.startswith("/"):
+-            local_file_staging_location = os.path.abspath(staging_location)
++        if actual_destination.startswith("/"):
++            local_file_staging_location = os.path.abspath(actual_destination)
+             output_uri = os.path.join(local_file_staging_location, str(uuid.uuid4()))
+             sdf.write.parquet(output_uri)
+             return _list_files_in_folder(output_uri)
+-        elif staging_location.startswith("s3://"):
++        elif actual_destination.startswith("s3://"):
+             from feast.infra.utils import aws_utils
+ 
+-            spark_compatible_s3_staging_location = staging_location.replace(
++            spark_compatible_s3_staging_location = actual_destination.replace(
+                 "s3://", "s3a://"
+             )
+             output_uri = os.path.join(
+@@ -1127,19 +1166,19 @@ class SparkRetrievalJob(RetrievalJob):
+             return aws_utils.list_s3_files(
+                 self._config.offline_store.region, s3_uri_for_listing
+             )
+-        elif staging_location.startswith("gs://"):
+-            output_uri = os.path.join(staging_location, str(uuid.uuid4()))
++        elif actual_destination.startswith("gs://"):
++            output_uri = os.path.join(actual_destination, str(uuid.uuid4()))
+             sdf.write.parquet(output_uri)
+             return _list_gcs_files(output_uri)
+-        elif staging_location.startswith(("wasbs://", "abfs://", "abfss://")) or (
+-            staging_location.startswith("https://")
+-            and ".blob.core.windows.net" in staging_location
++        elif actual_destination.startswith(("wasbs://", "abfs://", "abfss://")) or (
++            actual_destination.startswith("https://")
++            and ".blob.core.windows.net" in actual_destination
+         ):
+-            output_uri = os.path.join(staging_location, str(uuid.uuid4()))
++            output_uri = os.path.join(actual_destination, str(uuid.uuid4()))
+             sdf.write.parquet(output_uri)
+             return _list_azure_files(output_uri)
+-        elif staging_location.startswith("hdfs://"):
+-            output_uri = os.path.join(staging_location, str(uuid.uuid4()))
++        elif actual_destination.startswith("hdfs://"):
++            output_uri = os.path.join(actual_destination, str(uuid.uuid4()))
+             sdf.write.parquet(output_uri)
+             spark_session = get_spark_session_or_start_new_with_repoconfig(
+                 store_config=self._config.offline_store
+@@ -1150,6 +1189,12 @@ class SparkRetrievalJob(RetrievalJob):
+                 "to_remote_storage is only implemented for file://, s3://, gs://, azure, and hdfs uri schemes"
+             )
+ 
++    def _is_valid_destination(self, destination: str) -> bool:
++        """Validate if the destination scheme is supported"""
++        return destination.startswith(("s3://", "gs://", "file://", "/", "wasbs://", "abfs://", "abfss://", "hdfs://")) or (
++            destination.startswith("https://") and ".blob.core.windows.net" in destination
++        )
++
+     @property
+     def metadata(self) -> Optional[RetrievalMetadata]:
+         """
+@@ -1173,6 +1218,7 @@ def get_spark_session_or_start_new_with_repoconfig(
+ 
+         spark_session = spark_builder.getOrCreate()
+     spark_session.conf.set("spark.sql.parser.quotedRegexColumnNames", "true")
++    spark_session.conf.set("spark.sql.session.timeZone", "UTC")
+     return spark_session
+ 
+ 
+@@ -1195,7 +1241,7 @@ def _create_temp_entity_union_view(
+     fv_query_contexts: List[offline_utils.FeatureViewQueryContext],
+     start_date: datetime,
+     end_date: datetime,
+-    date_partition_column_formats: List[Optional[str]],
++    date_partition_column_formats_by_name: Dict[str, Optional[str]],
+ ) -> None:
+     # Why: derive distinct entity keys observed in the time window without requiring an entity_df upfront.
+     start_date_str = _format_datetime(start_date)
+@@ -1205,13 +1251,12 @@ def _create_temp_entity_union_view(
+     all_entities = _gather_all_entities(fv_query_contexts)
+ 
+     per_view_selects: List[str] = []
+-    for fv, ctx, date_format in zip(
+-        feature_views, fv_query_contexts, date_partition_column_formats
+-    ):
++    for fv, ctx in zip(feature_views, fv_query_contexts):
+         assert isinstance(fv.batch_source, SparkSource)
+         from_expression = fv.batch_source.get_table_query_string()
+         timestamp_field = fv.batch_source.timestamp_field or "event_timestamp"
+         date_partition_column = fv.batch_source.date_partition_column
++        date_format = date_partition_column_formats_by_name.get(ctx.name) or "%Y-%m-%d"
+         partition_clause = ""
+         if date_partition_column and date_format:
+             partition_clause = (
+@@ -1318,7 +1363,7 @@ def _apply_bfv_transformations(
+ 
+ 
+ def _get_entity_df_event_timestamp_range(
+-    entity_df: Union[pd.DataFrame, str],
++    entity_df: Union[pd.DataFrame, str, pyspark.sql.DataFrame],
+     entity_df_event_timestamp_col: str,
+     spark_session: SparkSession,
+ ) -> Tuple[datetime, datetime]:
+@@ -1338,17 +1383,30 @@ def _get_entity_df_event_timestamp_range(
+         # If the entity_df is a string (SQL query), determine range
+         # from table
+         if isinstance(entity_df, str):
+-            df = spark_session.sql(entity_df).select(entity_df_event_timestamp_col)
++            if entity_df.startswith("s3://"):
++                spark_compatible_path = entity_df.replace("s3://", "s3a://")
++                df = spark_session.read.parquet(
++                    spark_compatible_path, pathGlobFilter="*.parquet"
++                )
++            else:
++                df = spark_session.sql(entity_df)
+             # Checks if executing entity sql resulted in any data
+             if df.rdd.isEmpty():
+                 raise EntitySQLEmptyResults(entity_df)
+         else:
+             df = entity_df
+-        # TODO(kzhang132): need utc conversion here.
+-
++        entity_ts_df = df.select(
++            F.col(entity_df_event_timestamp_col)
++            .cast("timestamp")
++            .alias("__entity_timestamp")
++        )
++        entity_df_event_timestamp_bounds = entity_ts_df.agg(
++            F.min("__entity_timestamp").alias("min_ts"),
++            F.max("__entity_timestamp").alias("max_ts"),
++        ).collect()[0]
+         entity_df_event_timestamp_range = (
+-            df.agg({entity_df_event_timestamp_col: "min"}).collect()[0][0],
+-            df.agg({entity_df_event_timestamp_col: "max"}).collect()[0][0],
++            entity_df_event_timestamp_bounds["min_ts"],
++            entity_df_event_timestamp_bounds["max_ts"],
+         )
+     else:
+         raise InvalidEntityType(type(entity_df))
+@@ -1357,13 +1415,22 @@ def _get_entity_df_event_timestamp_range(
+ 
+ 
+ def _get_entity_schema(
+-    spark_session: SparkSession, entity_df: Union[pandas.DataFrame, str]
++    spark_session: SparkSession,
++    entity_df: Union[pandas.DataFrame, str, pyspark.sql.DataFrame],
+ ) -> Dict[str, np.dtype]:
+     if isinstance(entity_df, pd.DataFrame):
+         return dict(zip(entity_df.columns, entity_df.dtypes))
+     elif isinstance(entity_df, str) or isinstance(entity_df, pyspark.sql.DataFrame):
+         if isinstance(entity_df, str):
+-            entity_spark_df = spark_session.sql(entity_df)
++            # Handle S3 paths directly for better performance
++            if entity_df.startswith("s3://"):
++                spark_compatible_path = entity_df.replace("s3://", "s3a://")
++                entity_spark_df = spark_session.read.parquet(
++                    spark_compatible_path, pathGlobFilter="*.parquet"
++                )
++            else:
++                # Handle as SQL query
++                entity_spark_df = spark_session.sql(entity_df)
+         else:
+             entity_spark_df = entity_df
+         return dict(
+@@ -1379,7 +1446,7 @@ def _get_entity_schema(
+ def _upload_entity_df(
+     spark_session: SparkSession,
+     table_name: str,
+-    entity_df: Union[pandas.DataFrame, str],
++    entity_df: Union[pandas.DataFrame, str, pyspark.sql.DataFrame],
+     event_timestamp_col: str,
+ ) -> None:
+     if isinstance(entity_df, pd.DataFrame):
+@@ -1388,7 +1455,15 @@ def _upload_entity_df(
+         )
+         spark_session.createDataFrame(entity_df).createOrReplaceTempView(table_name)
+     elif isinstance(entity_df, str):
+-        spark_session.sql(entity_df).createOrReplaceTempView(table_name)
++        # Handle S3 paths directly for better performance
++        if entity_df.startswith("s3://"):
++            spark_compatible_path = entity_df.replace("s3://", "s3a://")
++            spark_session.read.parquet(
++                spark_compatible_path, pathGlobFilter="*.parquet"
++            ).createOrReplaceTempView(table_name)
++        else:
++            # Handle as SQL query
++            spark_session.sql(entity_df).createOrReplaceTempView(table_name)
+     elif isinstance(entity_df, pyspark.sql.DataFrame):
+         entity_df.createOrReplaceTempView(table_name)
+     else:
+@@ -1534,13 +1609,13 @@ MULTIPLE_FEATURE_VIEW_POINT_IN_TIME_JOIN = """
+ */
+ CREATE OR REPLACE TEMPORARY VIEW entity_dataframe AS (
+     SELECT *,
+-        {{entity_df_event_timestamp_col}} AS entity_timestamp
++        CAST({{entity_df_event_timestamp_col}} AS TIMESTAMP) AS entity_timestamp
+         {% for featureview in featureviews %}
+             ,CONCAT(
+                 {% for entity in featureview.entities %}
+                     CAST({{entity}} AS STRING),
+                 {% endfor %}
+-                CAST({{entity_df_event_timestamp_col}} AS STRING)
++                CAST(CAST({{entity_df_event_timestamp_col}} AS TIMESTAMP) AS STRING)
+             ) AS {{featureview.name}}__entity_row_unique_id
+         {% endfor %}
+     FROM {{ left_table_query_string }}
+@@ -1583,20 +1658,20 @@ CREATE OR REPLACE TEMPORARY VIEW {{ featureview.name }}__cleaned AS (
+ 
+     {{ featureview.name }}__subquery AS (
+         SELECT
+-            {{ featureview.timestamp_field }} as event_timestamp,
+-            {{ featureview.created_timestamp_column ~ ' as created_timestamp,' if featureview.created_timestamp_column else '' }}
++            CAST({{ featureview.timestamp_field }} AS TIMESTAMP) as event_timestamp,
++            {{ 'CAST(' ~ featureview.created_timestamp_column ~ ' AS TIMESTAMP) as created_timestamp,' if featureview.created_timestamp_column else '' }}
+             {{ featureview.entity_selections | join(', ')}}{% if featureview.entity_selections %},{% else %}{% endif %}
+             {% for feature in featureview.features %}
+                 {{ feature }} as {% if full_feature_names %}{{ featureview.name }}__{{featureview.field_mapping.get(feature, feature)}}{% else %}{{ featureview.field_mapping.get(feature, feature) }}{% endif %}{% if loop.last %}{% else %}, {% endif %}
+             {% endfor %}
+         FROM {{ featureview.table_subquery }}
+-        WHERE {{ featureview.timestamp_field }} <= '{{ featureview.max_event_timestamp }}'
++        WHERE CAST({{ featureview.timestamp_field }} AS TIMESTAMP) <= TIMESTAMP('{{ featureview.max_event_timestamp }}')
+         {% if featureview.date_partition_column != "" and featureview.date_partition_column is not none %}
+         AND {{ featureview.date_partition_column }} <= '{{ featureview.max_date_partition }}'
+         {% endif %}
+ 
+         {% if featureview.ttl == 0 %}{% else %}
+-        AND {{ featureview.timestamp_field }} >= '{{ featureview.min_event_timestamp }}'
++        AND CAST({{ featureview.timestamp_field }} AS TIMESTAMP) >= TIMESTAMP('{{ featureview.min_event_timestamp }}')
+         {% if featureview.date_partition_column != "" and featureview.date_partition_column is not none %}
+           AND {{ featureview.date_partition_column }} >= '{{ featureview.min_date_partition }}'
+         {% endif %}
+diff --git a/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark_source.py b/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark_source.py
+index d94a14123..aa457c8db 100644
+--- a/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark_source.py
++++ b/sdk/python/feast/infra/offline_stores/contrib/spark_offline_store/spark_source.py
+@@ -248,7 +248,12 @@ class SparkSource(DataSource):
+ 
+         if self.table_format is None:
+             # No table format specified, use standard file reading with file_format
+-            return spark_session.read.format(self.file_format).load(self.path)
++            # Add pathGlobFilter to exclude manifest files based on file format
++            glob_filter = self._get_glob_filter_for_format(self.file_format)
++            reader = spark_session.read.format(self.file_format)
++            if glob_filter:
++                reader = reader.option("pathGlobFilter", glob_filter)
++            return reader.load(self.path)
+ 
+         # Build reader with table format and options
+         reader = spark_session.read.format(self.table_format.format_type.value)
+@@ -257,10 +262,31 @@ class SparkSource(DataSource):
+         for key, value in self.table_format.properties.items():
+             reader = reader.option(key, value)
+ 
++        # Add pathGlobFilter to exclude manifest files based on format
++        glob_filter = self._get_glob_filter_for_format(self.table_format.format_type.value)
++        if glob_filter:
++            reader = reader.option("pathGlobFilter", glob_filter)
++
+         # For catalog-based table formats like Iceberg, the path is actually a table name
+         # For file-based formats, it's still a file path
+         return reader.load(self.path)
+ 
++    def _get_glob_filter_for_format(self, file_format: str) -> Optional[str]:
++        """Get appropriate glob filter for different file formats to exclude manifest files."""
++        # Define glob patterns for each supported format
++        format_globs = {
++            "parquet": "*.parquet",
++            "csv": "*.csv",
++            "json": "*.json",
++            "avro": "*.avro",
++            "orc": "*.orc",
++            "delta": "*.parquet",  # Delta uses parquet files
++            "iceberg": "*.parquet",  # Iceberg uses parquet files
++        }
++
++        # Return appropriate glob filter, or None if format not recognized
++        return format_globs.get(file_format.lower())
++
+     def __eq__(self, other):
+         base_eq = super().__eq__(other)
+         if not base_eq:
+@@ -446,7 +472,17 @@ class SavedDatasetSparkStorage(SavedDatasetStorage):
+         return SavedDatasetStorageProto(spark_storage=self.spark_options.to_proto())
+ 
+     def to_data_source(self) -> DataSource:
++        # Generate a name from the path if no table is provided
++        name = None
++        if self.spark_options.table:
++            name = self.spark_options.table
++        elif self.spark_options.path:
++            # Extract filename from path and use as name
++            import os
++            name = os.path.basename(self.spark_options.path.rstrip('/'))
++
+         return SparkSource(
++            name=name,
+             table=self.spark_options.table,
+             query=self.spark_options.query,
+             path=self.spark_options.path,
