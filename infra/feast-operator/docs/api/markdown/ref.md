@@ -188,6 +188,23 @@ _Appears in:_
 | `template` _string_ | Template for the created project |
 
 
+#### FeastPackagedOptions
+
+
+
+FeastPackagedOptions describes a feature repository packaged in a feature server image.
+
+_Appears in:_
+- [FeastProjectDir](#feastprojectdir)
+
+| Field | Description |
+| --- | --- |
+| `image` _string_ | Image containing the packaged feature repository. When set, this image is used by the
+repository initialization and feast apply containers and as the default service image.
+When omitted, the operator's configured feature server image is used. |
+| `featureRepoPath` _string_ | FeatureRepoPath is the absolute path to the feature repository in the image. |
+
+
 #### FeastProjectDir
 
 
@@ -201,6 +218,7 @@ _Appears in:_
 | --- | --- |
 | `git` _[GitCloneOptions](#gitcloneoptions)_ |  |
 | `init` _[FeastInitOptions](#feastinitoptions)_ |  |
+| `packaged` _[FeastPackagedOptions](#feastpackagedoptions)_ |  |
 
 
 #### FeatureStore

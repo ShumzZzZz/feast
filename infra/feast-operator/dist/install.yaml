@@ -818,10 +818,29 @@ spec:
                         - pytorch_nlp
                         type: string
                     type: object
+                  packaged:
+                    description: FeastPackagedOptions describes a feature repository
+                      packaged in a feature server image.
+                    properties:
+                      featureRepoPath:
+                        description: FeatureRepoPath is the absolute path to the feature
+                          repository in the image.
+                        type: string
+                      image:
+                        description: Image containing the packaged feature repository.
+                        type: string
+                    required:
+                    - featureRepoPath
+                    type: object
+                    x-kubernetes-validations:
+                    - message: FeatureRepoPath must be an absolute, non-root path.
+                      rule: self.featureRepoPath.startsWith('/') && self.featureRepoPath
+                        != '/'
                 type: object
                 x-kubernetes-validations:
-                - message: One selection required between init or git.
-                  rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                - message: One selection required between init, git, or packaged.
+                  rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                    c)'
               materialization:
                 description: |-
                   Materialization controls feature materialization behavior (batch size, pull strategy).
@@ -7107,10 +7126,29 @@ spec:
                             - pytorch_nlp
                             type: string
                         type: object
+                      packaged:
+                        description: FeastPackagedOptions describes a feature repository
+                          packaged in a feature server image.
+                        properties:
+                          featureRepoPath:
+                            description: FeatureRepoPath is the absolute path to the
+                              feature repository in the image.
+                            type: string
+                          image:
+                            description: Image containing the packaged feature repository.
+                            type: string
+                        required:
+                        - featureRepoPath
+                        type: object
+                        x-kubernetes-validations:
+                        - message: FeatureRepoPath must be an absolute, non-root path.
+                          rule: self.featureRepoPath.startsWith('/') && self.featureRepoPath
+                            != '/'
                     type: object
                     x-kubernetes-validations:
-                    - message: One selection required between init or git.
-                      rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                    - message: One selection required between init, git, or packaged.
+                      rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                        c)'
                   materialization:
                     description: |-
                       Materialization controls feature materialization behavior (batch size, pull strategy).
@@ -13523,10 +13561,29 @@ spec:
                         - pytorch_nlp
                         type: string
                     type: object
+                  packaged:
+                    description: FeastPackagedOptions describes a feature repository
+                      packaged in a feature server image.
+                    properties:
+                      featureRepoPath:
+                        description: FeatureRepoPath is the absolute path to the feature
+                          repository in the image.
+                        type: string
+                      image:
+                        description: Image containing the packaged feature repository.
+                        type: string
+                    required:
+                    - featureRepoPath
+                    type: object
+                    x-kubernetes-validations:
+                    - message: FeatureRepoPath must be an absolute, non-root path.
+                      rule: self.featureRepoPath.startsWith('/') && self.featureRepoPath
+                        != '/'
                 type: object
                 x-kubernetes-validations:
-                - message: One selection required between init or git.
-                  rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                - message: One selection required between init, git, or packaged.
+                  rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                    c)'
               services:
                 description: FeatureStoreServices defines the desired feast services.
                   An ephemeral onlineStore feature server is deployed by default.
@@ -18020,10 +18077,29 @@ spec:
                             - pytorch_nlp
                             type: string
                         type: object
+                      packaged:
+                        description: FeastPackagedOptions describes a feature repository
+                          packaged in a feature server image.
+                        properties:
+                          featureRepoPath:
+                            description: FeatureRepoPath is the absolute path to the
+                              feature repository in the image.
+                            type: string
+                          image:
+                            description: Image containing the packaged feature repository.
+                            type: string
+                        required:
+                        - featureRepoPath
+                        type: object
+                        x-kubernetes-validations:
+                        - message: FeatureRepoPath must be an absolute, non-root path.
+                          rule: self.featureRepoPath.startsWith('/') && self.featureRepoPath
+                            != '/'
                     type: object
                     x-kubernetes-validations:
-                    - message: One selection required between init or git.
-                      rule: '[has(self.git), has(self.init)].exists_one(c, c)'
+                    - message: One selection required between init, git, or packaged.
+                      rule: '[has(self.git), has(self.init), has(self.packaged)].exists_one(c,
+                        c)'
                   services:
                     description: FeatureStoreServices defines the desired feast services.
                       An ephemeral onlineStore feature server is deployed by default.

@@ -18,6 +18,7 @@ package services
 
 import (
 	"errors"
+	"path"
 	"strconv"
 	"strings"
 
@@ -704,9 +705,10 @@ func (feast *FeastServices) setInitContainer(podSpec *corev1.PodSpec, fsYamlB64 
 		feastProjectDir := applied.FeastProjectDir
 		workingDir := getOfflineMountPath(feast.Handler.FeatureStore)
 		projectPath := workingDir + "/" + applied.FeastProject
+		featureRepoImage := getFeatureServerImageForSpec(&applied)
 		container := corev1.Container{
 			Name:  feastInitContainerName,
-			Image: getFeatureServerImage(),
+			Image: featureRepoImage,
 			Env: []corev1.EnvVar{
 				{
 					Name:  TmpFeatureStoreYamlEnvVar,
@@ -717,6 +719,7 @@ func (feast *FeastServices) setInitContainer(podSpec *corev1.PodSpec, fsYamlB64 
 			WorkingDir: workingDir,
 		}
 
+		featureRepoDir := feast.getFeatureRepoDir()
 		var createCommand string
 		if feastProjectDir.Init != nil {
 			initSlice := []string{"feast", "init"}
@@ -746,20 +749,43 @@ func (feast *FeastServices) setInitContainer(podSpec *corev1.PodSpec, fsYamlB64 
 			if feastProjectDir.Git.EnvFrom != nil {
 				container.EnvFrom = *feastProjectDir.Git.EnvFrom
 			}
+		} else if feastProjectDir.Packaged != nil {
+			container.Env = append(container.Env,
+				corev1.EnvVar{
+					Name:  packagedFeatureRepoEnvVar,
+					Value: path.Clean(feastProjectDir.Packaged.FeatureRepoPath),
+				},
+				corev1.EnvVar{
+					Name:  stagedFeatureRepoEnvVar,
+					Value: featureRepoDir,
+				},
+			)
+			container.Args = []string{
+				"set -euo pipefail\n" +
+					"echo \"Staging packaged feast repository...\"\n" +
+					"if [[ ! -d \"${" + packagedFeatureRepoEnvVar + "}\" ]]; then " +
+					"echo \"Packaged feature repository not found: ${" + packagedFeatureRepoEnvVar + "}\" >&2; exit 1; fi\n" +
+					"rm -rf -- \"${" + stagedFeatureRepoEnvVar + "}\"\n" +
+					"mkdir -p -- \"${" + stagedFeatureRepoEnvVar + "}\"\n" +
+					"cp -a -- \"${" + packagedFeatureRepoEnvVar + "}/.\" \"${" + stagedFeatureRepoEnvVar + "}/\"\n" +
+					"printf '%s' \"${" + TmpFeatureStoreYamlEnvVar + "}\" | base64 -d > \"${" + stagedFeatureRepoEnvVar + "}/feature_store.yaml\"\n" +
+					"echo \"Packaged feast repository staging complete\"\n",
+			}
 		}
 
-		featureRepoDir := feast.getFeatureRepoDir()
-		container.Args = []string{
-			"echo \"Creating feast repository...\"\necho '" + createCommand + "'\n" +
-				"if [[ ! -d " + featureRepoDir + " ]]; then " + createCommand + "; fi;\n" +
-				"echo $" + TmpFeatureStoreYamlEnvVar + " | base64 -d \u003e " + featureRepoDir + "/feature_store.yaml;\necho \"Feast repo creation complete\";\n",
+		if feastProjectDir.Packaged == nil {
+			container.Args = []string{
+				"echo \"Creating feast repository...\"\necho '" + createCommand + "'\n" +
+					"if [[ ! -d " + featureRepoDir + " ]]; then " + createCommand + "; fi;\n" +
+					"echo $" + TmpFeatureStoreYamlEnvVar + " | base64 -d \u003e " + featureRepoDir + "/feature_store.yaml;\necho \"Feast repo creation complete\";\n",
+			}
 		}
 		podSpec.InitContainers = append(podSpec.InitContainers, container)
 
 		if applied.Services.RunFeastApplyOnInit != nil && *applied.Services.RunFeastApplyOnInit {
 			applyContainer := corev1.Container{
 				Name:       feastApplyContainerName,
-				Image:      getFeatureServerImage(),
+				Image:      featureRepoImage,
 				Command:    []string{feastCommand, "apply"},
 				WorkingDir: featureRepoDir,
 			}
@@ -1420,6 +1446,9 @@ func (feast *FeastServices) mountEmptyDirVolumes(podSpec *corev1.PodSpec) {
 
 func (feast *FeastServices) getFeatureRepoDir() string {
 	applied := feast.Handler.FeatureStore.Status.Applied
+	if applied.FeastProjectDir != nil && applied.FeastProjectDir.Packaged != nil && applied.Services.DisableInitContainers {
+		return path.Clean(applied.FeastProjectDir.Packaged.FeatureRepoPath)
+	}
 	feastProjectDir := getOfflineMountPath(feast.Handler.FeatureStore) + "/" + applied.FeastProject
 	if applied.FeastProjectDir != nil && applied.FeastProjectDir.Git != nil && len(applied.FeastProjectDir.Git.FeatureRepoPath) > 0 {
 		return feastProjectDir + "/" + applied.FeastProjectDir.Git.FeatureRepoPath

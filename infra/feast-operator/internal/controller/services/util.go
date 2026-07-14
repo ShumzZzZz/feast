@@ -99,6 +99,7 @@ func ApplyDefaultsToStatus(cr *feastdevv1.FeatureStore) {
 	if applied.Services == nil {
 		applied.Services = &feastdevv1.FeatureStoreServices{}
 	}
+	defaultFeatureServerImage := getFeatureServerImageForSpec(applied)
 	services := applied.Services
 	if services.RunFeastApplyOnInit == nil {
 		services.RunFeastApplyOnInit = boolPtr(true)
@@ -128,7 +129,7 @@ func ApplyDefaultsToStatus(cr *feastdevv1.FeatureStore) {
 			}
 
 			if services.Registry.Local.Server != nil {
-				setDefaultCtrConfigs(&services.Registry.Local.Server.ContainerConfigs.DefaultCtrConfigs)
+				setDefaultCtrConfigs(&services.Registry.Local.Server.ContainerConfigs.DefaultCtrConfigs, defaultFeatureServerImage)
 				// Set default for GRPC: true if nil
 				if services.Registry.Local.Server.GRPC == nil {
 					defaultGRPC := true
@@ -159,7 +160,7 @@ func ApplyDefaultsToStatus(cr *feastdevv1.FeatureStore) {
 		}
 
 		if services.OfflineStore.Server != nil {
-			setDefaultCtrConfigs(&services.OfflineStore.Server.ContainerConfigs.DefaultCtrConfigs)
+			setDefaultCtrConfigs(&services.OfflineStore.Server.ContainerConfigs.DefaultCtrConfigs, defaultFeatureServerImage)
 		}
 	}
 
@@ -186,10 +187,10 @@ func ApplyDefaultsToStatus(cr *feastdevv1.FeatureStore) {
 	if services.OnlineStore.Server == nil {
 		services.OnlineStore.Server = &feastdevv1.ServerConfigs{}
 	}
-	setDefaultCtrConfigs(&services.OnlineStore.Server.ContainerConfigs.DefaultCtrConfigs)
+	setDefaultCtrConfigs(&services.OnlineStore.Server.ContainerConfigs.DefaultCtrConfigs, defaultFeatureServerImage)
 
 	if services.UI != nil {
-		setDefaultCtrConfigs(&services.UI.ContainerConfigs.DefaultCtrConfigs)
+		setDefaultCtrConfigs(&services.UI.ContainerConfigs.DefaultCtrConfigs, defaultFeatureServerImage)
 	}
 
 	if applied.CronJob == nil {
@@ -198,11 +199,18 @@ func ApplyDefaultsToStatus(cr *feastdevv1.FeatureStore) {
 	setDefaultCronJobConfigs(applied.CronJob)
 }
 
-func setDefaultCtrConfigs(defaultConfigs *feastdevv1.DefaultCtrConfigs) {
+func setDefaultCtrConfigs(defaultConfigs *feastdevv1.DefaultCtrConfigs, defaultImage string) {
 	if defaultConfigs.Image == nil {
-		img := getFeatureServerImage()
+		img := defaultImage
 		defaultConfigs.Image = &img
 	}
+}
+
+func getFeatureServerImageForSpec(spec *feastdevv1.FeatureStoreSpec) string {
+	if spec != nil && spec.FeastProjectDir != nil && spec.FeastProjectDir.Packaged != nil && spec.FeastProjectDir.Packaged.Image != "" {
+		return spec.FeastProjectDir.Packaged.Image
+	}
+	return getFeatureServerImage()
 }
 
 func getFeatureServerImage() string {
